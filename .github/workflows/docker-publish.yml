@@ -362,11 +362,19 @@ jobs:
       # ---------------------------------------------------------------------
       # Make the just-published package PUBLIC so `docker pull` works without
       # a GHCR login. GHCR creates packages private by default. We use the
-      # REST API with the job's GITHUB_TOKEN.
+      # REST API with the job's GITHUB_TOKEN (which has packages:write).
       #
-      # Idempotent: PUTing the same visibility state is a no-op. We swallow
-      # the response code so a future API change (or a pre-existing public
-      # package) doesn't break the workflow after the image is already pushed.
+      # Endpoint note: the correct PATCH endpoint for a *user* package is
+      # `/user/packages/container/{name}`. For org packages, the owner
+      # segment is the org name. The GITHUB_TOKEN issued to this workflow
+      # only has access to packages owned by the actor (eddremonts86), so
+      # `/user/...` is the right prefix even though the image path is
+      # `ghcr.io/eddremonts86/...`.
+      #
+      # Visibility is sticky: if the package is already public, the PATCH
+      # is a no-op success. We don't swallow the error code here because
+      # a failure here means the image is private, which makes the whole
+      # publish pointless.
       # ---------------------------------------------------------------------
       - name: Make GHCR package public
         if: github.event_name == 'push' && github.ref == 'refs/heads/main' || github.event_name == 'release'
@@ -376,10 +384,17 @@ jobs:
           PKG_NAME: hermes-agent
         run: |
           set -euo pipefail
-          curl -sS -X PATCH \
+          echo "→ PATCH /user/packages/container/${PKG_NAME} visibility=public"
+          HTTP=$(curl -sS -o /tmp/ghcr_patch.json -w "%{http_code}" -X PATCH \
             -H "Authorization: Bearer ${GH_TOKEN}" \
             -H "Accept: application/vnd.github+json" \
             -H "Content-Type: application/json" \
-            -d '{"visibility":"public","package_name":"'"${PKG_NAME}"'"}' \
-            "https://api.github.io/user/packages/container/${PKG_NAME}" \
-            || echo "(package visibility flip is best-effort; check GHCR UI if needed)"
+            -d '{"visibility":"public"}' \
+            "https://api.github.com/user/packages/container/${PKG_NAME}")
+          echo "← HTTP $HTTP"
+          cat /tmp/ghcr_patch.json
+          echo
+          if [ "$HTTP" != "200" ]; then
+            echo "::error::GHCR visibility flip returned HTTP $HTTP"
+            exit 1
+          fi
