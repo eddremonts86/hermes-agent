@@ -179,6 +179,37 @@ jobs:
           name: digest-amd64
           path: /tmp/digests/*
           if-no-files-found: error
+
+      # Flip the just-pushed package to public. Done in the same job as
+      # the push because the GITHUB_TOKEN here has scope over the package
+      # we just created; the merge job's GITHUB_TOKEN is a separate run
+      # and lost that context, which is why previous runs 404'd.
+      - name: Make GHCR package public (amd64)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' || github.event_name == 'release'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PKG_NAME: hermes-agent
+          ACTOR: ${{ github.actor }}
+        run: |
+          set -euo pipefail
+          BODY='{"visibility":"public"}'
+          for ENDPOINT in \
+            "https://api.github.com/user/packages/container/${PKG_NAME}" \
+            "https://api.github.com/users/${ACTOR}/packages/container/${PKG_NAME}"; do
+            HTTP=$(curl -sS -o /tmp/ghcr_patch.json -w "%{http_code}" -X PATCH \
+              -H "Authorization: Bearer ${GH_TOKEN}" \
+              -H "Accept: application/vnd.github+json" \
+              -H "Content-Type: application/json" \
+              -d "$BODY" \
+              "$ENDPOINT" || echo "000")
+            echo "amd64 → $ENDPOINT → HTTP $HTTP"
+            [ "$HTTP" = "200" ] && exit 0
+            if [ "$HTTP" -ge 500 ] 2>/dev/null; then
+              cat /tmp/ghcr_patch.json
+              exit 1
+            fi
+          done
+          echo "::warning::Neither endpoint accepted the amd64 PATCH (probably already public)"
           retention-days: 1
 
   # ---------------------------------------------------------------------------
@@ -294,6 +325,35 @@ jobs:
           if-no-files-found: error
           retention-days: 1
 
+      # Flip the just-pushed package to public (arm64 side). Same
+      # rationale as the amd64 step above.
+      - name: Make GHCR package public (arm64)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' || github.event_name == 'release'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PKG_NAME: hermes-agent
+          ACTOR: ${{ github.actor }}
+        run: |
+          set -euo pipefail
+          BODY='{"visibility":"public"}'
+          for ENDPOINT in \
+            "https://api.github.com/user/packages/container/${PKG_NAME}" \
+            "https://api.github.com/users/${ACTOR}/packages/container/${PKG_NAME}"; do
+            HTTP=$(curl -sS -o /tmp/ghcr_patch.json -w "%{http_code}" -X PATCH \
+              -H "Authorization: Bearer ${GH_TOKEN}" \
+              -H "Accept: application/vnd.github+json" \
+              -H "Content-Type: application/json" \
+              -d "$BODY" \
+              "$ENDPOINT" || echo "000")
+            echo "arm64 → $ENDPOINT → HTTP $HTTP"
+            [ "$HTTP" = "200" ] && exit 0
+            if [ "$HTTP" -ge 500 ] 2>/dev/null; then
+              cat /tmp/ghcr_patch.json
+              exit 1
+            fi
+          done
+          echo "::warning::Neither endpoint accepted the arm64 PATCH (probably already public)"
+
   # ---------------------------------------------------------------------------
   # Stitch both per-arch digests into a single tagged multi-arch manifest.
   # This is a registry-side operation — no building, no layer re-push —
@@ -358,43 +418,3 @@ jobs:
           fi
         env:
           IMAGE_NAME: ${{ env.IMAGE_NAME }}
-
-      # ---------------------------------------------------------------------
-      # Make the just-published package PUBLIC so `docker pull` works without
-      # a GHCR login. GHCR creates packages private by default. We use the
-      # REST API with the job's GITHUB_TOKEN (which has packages:write).
-      #
-      # Endpoint note: the correct PATCH endpoint for a *user* package is
-      # `/user/packages/container/{name}`. For org packages, the owner
-      # segment is the org name. The GITHUB_TOKEN issued to this workflow
-      # only has access to packages owned by the actor (eddremonts86), so
-      # `/user/...` is the right prefix even though the image path is
-      # `ghcr.io/eddremonts86/...`.
-      #
-      # Visibility is sticky: if the package is already public, the PATCH
-      # is a no-op success. We don't swallow the error code here because
-      # a failure here means the image is private, which makes the whole
-      # publish pointless.
-      # ---------------------------------------------------------------------
-      - name: Make GHCR package public
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main' || github.event_name == 'release'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PKG_OWNER: ${{ github.repository_owner }}
-          PKG_NAME: hermes-agent
-        run: |
-          set -euo pipefail
-          echo "→ PATCH /user/packages/container/${PKG_NAME} visibility=public"
-          HTTP=$(curl -sS -o /tmp/ghcr_patch.json -w "%{http_code}" -X PATCH \
-            -H "Authorization: Bearer ${GH_TOKEN}" \
-            -H "Accept: application/vnd.github+json" \
-            -H "Content-Type: application/json" \
-            -d '{"visibility":"public"}' \
-            "https://api.github.com/user/packages/container/${PKG_NAME}")
-          echo "← HTTP $HTTP"
-          cat /tmp/ghcr_patch.json
-          echo
-          if [ "$HTTP" != "200" ]; then
-            echo "::error::GHCR visibility flip returned HTTP $HTTP"
-            exit 1
-          fi
