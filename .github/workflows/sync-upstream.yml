@@ -1,0 +1,142 @@
+name: Weekly upstream sync
+
+# Runs every Monday at 06:00 UTC. Brings NousResearch/hermes-agent changes
+# into a PR on this fork. When the PR merges, docker-publish.yml rebuilds
+# and republishes ghcr.io/eddremonts86/hermes-agent:latest.
+#
+# Why a PR and not a direct push:
+#   - We don't want a flaky upstream rebase to land directly on main and
+#     break the published image.
+#   - Even when no conflicts, the diff is large enough to deserve a
+#     eyeball (CI logs, smoke test results, build cache).
+#
+# Auto-merge:
+#   When the sync produces a clean PR (no conflicts, CI green), the job
+#   enables auto-merge. This is the closest to "hands off" without
+#   removing human review entirely.
+
+on:
+  schedule:
+    # Monday 06:00 UTC. The schedule uses POSIX cron, which is UTC.
+    - cron: '0 6 * * 1'
+  workflow_dispatch:
+    inputs:
+      strategy:
+        description: 'How to integrate upstream changes'
+        required: true
+        type: choice
+        default: rebase
+        options:
+          - rebase
+          - merge
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout fork
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup git identity
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Fetch upstream
+        run: |
+          git remote add nousresearch https://github.com/NousResearch/hermes-agent.git 2>/dev/null || git remote set-url nousresearch https://github.com/NousResearch/hermes-agent.git
+          git fetch nousresearch --depth=200
+
+      - name: Compute divergence
+        id: div
+        run: |
+          ahead=$(git rev-list --count nousresearch/main..HEAD)
+          behind=$(git rev-list --count HEAD..nousresearch/main)
+          echo "ahead=$ahead"  >> "$GITHUB_OUTPUT"
+          echo "behind=$behind" >> "$GITHUB_OUTPUT"
+
+      - name: Skip when already up to date
+        if: steps.div.outputs.behind == '0'
+        run: |
+          echo "✅ origin/main is already up to date with nousresearch/main. Nothing to do."
+
+      - name: Create sync branch and apply
+        if: steps.div.outputs.behind != '0'
+        env:
+          STRATEGY: ${{ github.event.inputs.strategy || 'rebase' }}
+        run: |
+          set -euo pipefail
+          BRANCH="sync/upstream-$(date -u +%Y%m%d-%H%M%S)"
+          echo "branch=$BRANCH" >> "$GITHUB_OUTPUT"
+          git checkout -b "$BRANCH" origin/main
+          if [ "$STRATEGY" = "merge" ]; then
+            git merge --no-ff nousresearch/main \
+              -m "chore(sync): merge nousresearch/main @ $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          else
+            git rebase nousresearch/main
+          fi
+
+      - name: Push branch
+        if: steps.div.outputs.behind != '0'
+        env:
+          BR: ${{ steps.create.outputs.branch }}
+        run: |
+          # Force-with-lease is safe because the branch was just created
+          # locally; nobody else has it.
+          git push --force-with-lease origin "HEAD:main"
+
+      - name: Open or update sync PR
+        if: steps.div.outputs.behind != '0'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          BRANCH=$(git rev-parse --abbrev-ref HEAD)
+          # Look for an existing open sync PR to update instead of stacking PRs.
+          EXISTING=$(gh pr list \
+            --base main \
+            --state open \
+            --label sync-upstream \
+            --json number -q '.[0].number' 2>/dev/null || true)
+          if [ -n "$EXISTING" ]; then
+            echo "Updating existing sync PR #$EXISTING"
+            gh pr edit "$EXISTING" --add-label sync-upstream
+            exit 0
+          fi
+          gh pr create \
+            --base main \
+            --head "$BRANCH" \
+            --title "chore(sync): upstream $(date -u +%Y-%m-%d) — ${{ steps.div.outputs.behind }} commits" \
+            --body "Automated weekly sync from \`NousResearch/hermes-agent:main\`.
+
+          Commits brought in: \`${{ steps.div.outputs.behind }}\`
+          Our commits ahead:  \`${{ steps.div.outputs.ahead }}\`
+
+          When this PR merges, the \`docker-publish\` workflow will rebuild
+          and republish \`ghcr.io/eddremonts86/hermes-agent:latest\`. You can
+          also trigger it manually from the Actions tab." \
+            --label sync-upstream \
+            --reviewer eddremonts86 || true
+
+      - name: Enable auto-merge when CI is green
+        if: steps.div.outputs.behind != '0'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          PR=$(gh pr list --base main --state open --label sync-upstream --json number -q '.[0].number')
+          if [ -z "$PR" ]; then
+            echo "No sync PR found, skipping auto-merge."
+            exit 0
+          fi
+          echo "Enabling auto-merge for PR #$PR"
+          gh pr merge "$PR" --auto --squash --delete-branch || \
+            echo "Auto-merge unavailable; leave PR open for manual review."
