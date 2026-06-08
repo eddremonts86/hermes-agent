@@ -262,13 +262,6 @@ jobs:
         with:
           image: ${{ env.IMAGE_NAME }}:test
 
-      - name: Log in to Docker Hub
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main' || github.event_name == 'release'
-        uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121  # v4.1.0
-        with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-
       - name: Push arm64 by digest
         id: push
         if: github.event_name == 'push' && github.ref == 'refs/heads/main' || github.event_name == 'release'
@@ -327,11 +320,12 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f  # v3
 
-      - name: Log in to Docker Hub
+      - name: Log in to GHCR (for the manifest-list push)
         uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121  # v4.1.0
         with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Create manifest list and push
         working-directory: /tmp/digests
