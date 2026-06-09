@@ -187,7 +187,7 @@ jobs:
       - name: Make GHCR package public (amd64)
         if: github.event_name == 'push' && github.ref == 'refs/heads/main' || github.event_name == 'release'
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GHCR_PUBLISH_TOKEN }}
           PKG_NAME: hermes-agent
           ACTOR: ${{ github.actor }}
         run: |
@@ -330,7 +330,7 @@ jobs:
       - name: Make GHCR package public (arm64)
         if: github.event_name == 'push' && github.ref == 'refs/heads/main' || github.event_name == 'release'
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GHCR_PUBLISH_TOKEN }}
           PKG_NAME: hermes-agent
           ACTOR: ${{ github.actor }}
         run: |
