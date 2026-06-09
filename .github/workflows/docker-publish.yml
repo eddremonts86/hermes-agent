@@ -6,6 +6,11 @@ on:
     paths:
       - '**/*.py'
       - 'pyproject.toml'
+      - 'uv.lock'
+      - 'Dockerfile'
+      - 'docker/**'
+      - '.github/workflows/docker-publish.yml'
+      - '.github/actions/hermes-smoke-test/**'
       # Dashboard web (TypeScript/React) lives in web/src/. When we
       # change the front-end we still need a fresh image so the
       # dashboard picks up the new bundle. The Dockerfile bakes the
@@ -15,13 +20,6 @@ on:
       - 'web/index.html'
       - 'web/vite.config.ts'
       - 'web/tsconfig*.json'
-      - 'Dockerfile'
-  workflow_dispatch:
-      - 'uv.lock'
-      - 'Dockerfile'
-      - 'docker/**'
-      - '.github/workflows/docker-publish.yml'
-      - '.github/actions/hermes-smoke-test/**'
   pull_request:
     branches: [main]
     paths:
@@ -32,8 +30,14 @@ on:
       - 'docker/**'
       - '.github/workflows/docker-publish.yml'
       - '.github/actions/hermes-smoke-test/**'
+      - 'web/src/**'
+      - 'web/package.json'
+      - 'web/index.html'
+      - 'web/vite.config.ts'
+      - 'web/tsconfig*.json'
   release:
     types: [published]
+  workflow_dispatch:
 
 permissions:
   contents: read
