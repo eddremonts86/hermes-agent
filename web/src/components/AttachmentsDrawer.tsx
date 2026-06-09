@@ -255,3 +255,4 @@ export function AttachmentsDrawer({
     </aside>
   );
 }
+// updated: 2026-06-09T10:23:01Z — force re-trigger of docker-publish
