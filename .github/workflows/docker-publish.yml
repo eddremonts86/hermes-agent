@@ -6,6 +6,17 @@ on:
     paths:
       - '**/*.py'
       - 'pyproject.toml'
+      # Dashboard web (TypeScript/React) lives in web/src/. When we
+      # change the front-end we still need a fresh image so the
+      # dashboard picks up the new bundle. The Dockerfile bakes the
+      # build output into the image at /opt/hermes/hermes_cli/web_dist.
+      - 'web/src/**'
+      - 'web/package.json'
+      - 'web/index.html'
+      - 'web/vite.config.ts'
+      - 'web/tsconfig*.json'
+      - 'Dockerfile'
+  workflow_dispatch:
       - 'uv.lock'
       - 'Dockerfile'
       - 'docker/**'
