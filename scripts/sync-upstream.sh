@@ -1,21 +1,22 @@
 #!/bin/bash
 # =============================================================================
-# scripts/sync-upstream.sh — sincroniza origin/main con nousresearch/main.
+# scripts/sync-upstream.sh — sincroniza origin/main con nousresearch/main
+# directamente (sin PR), para un fork personal.
 #
 # Uso:
 #   bash scripts/sync-upstream.sh status
 #       Muestra commits ahead/behind sin tocar nada.
 #
-#   bash scripts/sync-upstream.sh sync [--rebase|--merge]
-#       Hace fetch + rebase (default) o merge de nousresearch/main a origin/main.
+#   bash scripts/sync-upstream.sh sync [--rebase|--merge] [--push]
+#       Hace fetch + rebase (default) o merge de nousresearch/main
+#       sobre origin/main. Con --push, sube al fork automáticamente.
 #       Si hay conflictos, los resolve`ás a mano y después `git push origin main`.
 #
 # Por qué existe:
-#   El fork diverge 274 commits de NousResearch al día de hoy. Sin sync
-#   periódico, mergear cambios upstream después de N semanas se vuelve
-#   infernal. La CI corre este mismo script vía .github/workflows/sync-
-#   upstream.yml cada lunes 06:00 UTC, abre un PR automático y vos lo
-#   revisás cuando quieras.
+#   El fork diverge N commits de NousResearch. Sin sync periódico,
+#   mergear cambios upstream después de varias semanas se vuelve infernal.
+#   La CI corre este mismo script vía .github/workflows/sync-upstream.yml
+#   cada lunes 06:00 UTC y pushea directo a main (sin PR).
 #
 # Variables de entorno:
 #   UPSTREAM_REMOTE  (default: nousresearch)
@@ -28,6 +29,7 @@ set -euo pipefail
 UPSTREAM_REMOTE="${UPSTREAM_REMOTE:-nousresearch}"
 UPSTREAM_BRANCH="${UPSTREAM_BRANCH:-main}"
 STRATEGY="${STRATEGY:-rebase}"
+DO_PUSH=0
 
 cd "$(dirname "$0")/.."
 
@@ -57,9 +59,15 @@ cmd_status() {
 
 cmd_sync() {
   ensure_remote
-  if [ "${1:-}" = "--merge" ]; then
-    STRATEGY="merge"
-  fi
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --merge) STRATEGY="merge" ;;
+      --rebase) STRATEGY="rebase" ;;
+      --push) DO_PUSH=1 ;;
+      *) echo "Opción desconocida: $1"; exit 2 ;;
+    esac
+    shift
+  done
 
   echo "🛡️  Haciendo backup del branch actual..."
   local current_branch
@@ -77,7 +85,7 @@ cmd_sync() {
       echo
       echo "❌ Merge conflict. Resolvelo a mano y corré:"
       echo "   git add -A && git commit --no-edit"
-      echo "   git push origin main"
+      [ "$DO_PUSH" = "1" ] && echo "   git push origin main"
       exit 1
     fi
   else
@@ -85,14 +93,31 @@ cmd_sync() {
       echo
       echo "❌ Rebase conflict. Resolvelo a mano y corré:"
       echo "   git rebase --continue   (o --abort para volver atrás)"
-      echo "   git push --force-with-lease origin main"
+      [ "$DO_PUSH" = "1" ] && echo "   git push --force-with-lease origin main"
       exit 1
     fi
   fi
 
   echo
-  echo "✅ Sync completo. Cambios en origin/main."
-  echo "   Para subir: git push $([ "$STRATEGY" = "merge" ] && echo origin || echo --force-with-lease origin) main"
+  echo "✅ Sync completo en $current_branch."
+
+  if [ "$DO_PUSH" = "1" ]; then
+    if [ "$STRATEGY" = "merge" ]; then
+      echo "🚀 Pushing a origin/main (merge)..."
+      git push origin main
+    else
+      echo "🚀 Force-pushing a origin/main (rebase)..."
+      git push --force-with-lease origin main
+    fi
+    echo "✅ Listo. La CI rebuild'eá y republicará ghcr.io/eddremonts86/hermes-agent."
+  else
+    echo "ℹ️  No hice push. Para subir:"
+    if [ "$STRATEGY" = "merge" ]; then
+      echo "   git push origin main"
+    else
+      echo "   git push --force-with-lease origin main"
+    fi
+  fi
 }
 
 case "${1:-status}" in
@@ -104,7 +129,7 @@ case "${1:-status}" in
     cmd_sync "$@"
     ;;
   *)
-    echo "Uso: $0 {status|sync [--merge]}"
+    echo "Uso: $0 {status|sync [--rebase|--merge] [--push]}"
     exit 2
     ;;
 esac
