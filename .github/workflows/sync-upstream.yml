@@ -60,6 +60,14 @@ jobs:
         if: steps.div.outputs.behind != '0'
         env:
           BEHIND: ${{ steps.div.outputs.behind }}
+          # Use SYNC_TOKEN (a classic PAT with `workflow` scope) for the
+          # push because GITHUB_TOKEN cannot update `.github/workflows/*`
+          # files (GitHub's workflow-scope protection). The rebase may
+          # bring in upstream workflow changes.
+          PUSH_AS: ${{ secrets.SYNC_TOKEN }}
+          # Reconfigure origin with the PAT so the rebase's push succeeds
+          # even if upstream brought in workflow file changes.
+          PUSH_URL: https://x-access-token:${{ secrets.SYNC_TOKEN }}@github.com/eddremonts86/hermes-agent.git
         run: |
           set -euo pipefail
           echo "Rebasing $BEHIND upstream commit(s) onto HEAD..."
@@ -70,9 +78,10 @@ jobs:
           # After a rebase, HEAD is no longer a fast-forward of origin/main,
           # so we MUST force-push. --force-with-lease is safe here because:
           #   1. The remote was just fetched at the start of this job.
-          #   2. The only writer to this branch is this workflow (GITHUB_TOKEN).
+          #   2. The only writer to this branch is this workflow (SYNC_TOKEN).
           # If a concurrent write slipped in, --force-with-lease will refuse
           # and we'll see the failure rather than silently clobbering.
+          git remote set-url origin "$PUSH_URL"
           git push --force-with-lease origin HEAD:main
           echo "✅ Pushed rebase to origin/main."
           echo "ℹ️  docker-publish.yml will rebuild and republish ghcr.io/eddremonts86/hermes-agent."
