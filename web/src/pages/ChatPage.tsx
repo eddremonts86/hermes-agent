@@ -26,15 +26,25 @@ import { Button } from "@nous-research/ui/ui/components/button";
 import { Typography } from "@nous-research/ui/ui/components/typography/index";
 import { HERMES_BASE_PATH, buildWsAuthParam } from "@/lib/api";
 import { cn } from "@/lib/utils";
-import { Copy, PanelRight, X } from "lucide-react";
+import { Copy, Paperclip, PanelRight, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useSearchParams } from "react-router-dom";
 
+import {
+  AttachmentsDrawer,
+  type Attachment,
+} from "@/components/AttachmentsDrawer";
 import { ChatSidebar } from "@/components/ChatSidebar";
 import { usePageHeader } from "@/contexts/usePageHeader";
 import { useI18n } from "@/i18n";
 import { api } from "@/lib/api";
+import {
+  makeAttachmentId,
+  readFileAsDataUrl,
+  validateAttachment,
+} from "@/lib/attachment-utils";
+import { GatewayClient } from "@/lib/gatewayClient";
 import { PluginSlot } from "@/plugins";
 import { useTheme } from "@/themes";
 
@@ -133,6 +143,192 @@ export default function ChatPage({ isActive = true }: { isActive?: boolean }) {
   );
   const [copyState, setCopyState] = useState<"idle" | "copied">("idle");
   const copyResetRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // ---------------------------------------------------------------------------
+  // Attachments: list lives in RAM for the lifetime of the page mount.
+  //   - drop on the xterm host (or click the 📎 button) → add to list, then
+  //     call `file.attach` JSON-RPC on the gateway.
+  //   - drawer is collapsible from the right; same panel slot as ChatSidebar
+  //     (chat-side-panel) when the viewport is wide.
+  // ---------------------------------------------------------------------------
+  const [attachments, setAttachments] = useState<Attachment[]>([]);
+  const [attachmentsOpen, setAttachmentsOpen] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
+  const dragCounterRef = useRef(0);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  /** GatewayClient reused across the session — created lazily on first attach. */
+  const attachGwRef = useRef<GatewayClient | null>(null);
+
+  /**
+   * Get or create a GatewayClient for the attachment RPC. The client
+   * connects on first use; subsequent calls reuse the live socket.
+   */
+  const getAttachGateway = useCallback(async (): Promise<GatewayClient> => {
+    if (!attachGwRef.current) {
+      const gw = new GatewayClient();
+      await gw.connect();
+      attachGwRef.current = gw;
+    }
+    return attachGwRef.current;
+  }, []);
+
+  /**
+   * Stage a File into local state, then ship it to the gateway via
+   * `file.attach`. Errors are captured per-attachment so the UI can
+   * show "error" state for that one file without losing the rest.
+   */
+  const handleFiles = useCallback(
+    async (files: FileList | File[]) => {
+      const list = Array.from(files);
+      if (list.length === 0) return;
+
+      // Pre-validate and create placeholder rows.
+      const placeholders: Attachment[] = list.map((f) => {
+        const validationError = validateAttachment(f);
+        return {
+          id: makeAttachmentId(),
+          name: f.name || "untitled",
+          size: f.size,
+          mime: f.type || "application/octet-stream",
+          dataUrl: "",
+          status: validationError ? "error" : "uploading",
+          error: validationError ?? undefined,
+        };
+      });
+      setAttachments((prev) => [...prev, ...placeholders]);
+
+      // Find a session id for the gateway RPC. We pull it from the WS
+      // URL we already built (the PTY session token) — if the chat isn't
+      // yet connected, we fail with a clear message per-attachment.
+      const sessionToken =
+        typeof window !== "undefined"
+          ? window.__HERMES_SESSION_TOKEN__ || ""
+          : "";
+
+      for (let i = 0; i < list.length; i++) {
+        const file = list[i];
+        const placeholder = placeholders[i];
+        if (placeholder.status === "error") continue;
+
+        try {
+          const dataUrl = await readFileAsDataUrl(file);
+          // Persist the dataUrl in the row so retries work without re-reading.
+          setAttachments((prev) =>
+            prev.map((a) =>
+              a.id === placeholder.id ? { ...a, dataUrl } : a,
+            ),
+          );
+
+          const gw = await getAttachGateway();
+          const result = await gw.request<{
+            attached: boolean;
+            name: string;
+            path: string;
+            ref_path?: string;
+            ref_text?: string;
+            uploaded: boolean;
+          }>("file.attach", {
+            session_id: sessionToken,
+            name: file.name,
+            data_url: dataUrl,
+          });
+
+          setAttachments((prev) =>
+            prev.map((a) =>
+              a.id === placeholder.id
+                ? {
+                    ...a,
+                    status: "uploaded",
+                    refPath: result.ref_path ?? result.path,
+                    refText: result.ref_text,
+                  }
+                : a,
+            ),
+          );
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : String(e);
+          setAttachments((prev) =>
+            prev.map((a) =>
+              a.id === placeholder.id
+                ? { ...a, status: "error", error: msg }
+                : a,
+            ),
+          );
+        }
+      }
+    },
+    [getAttachGateway],
+  );
+
+  const removeAttachment = useCallback((id: string) => {
+    setAttachments((prev) => prev.filter((a) => a.id !== id));
+  }, []);
+
+  const clearAttachments = useCallback(() => {
+    setAttachments([]);
+  }, []);
+
+  /**
+   * Drag-and-drop handlers. Counter trick so the overlay doesn't
+   * flicker as the cursor crosses child elements — we only flip
+   * "isDragging" to true on the first dragenter and back to false
+   * on the matching dragleave/drop.
+   */
+  const onDragEnterTerminal = useCallback((e: React.DragEvent) => {
+    if (!e.dataTransfer?.types.includes("Files")) return;
+    e.preventDefault();
+    dragCounterRef.current += 1;
+    if (dragCounterRef.current === 1) setIsDragging(true);
+  }, []);
+  const onDragOverTerminal = useCallback((e: React.DragEvent) => {
+    if (!e.dataTransfer?.types.includes("Files")) return;
+    e.preventDefault();
+  }, []);
+  const onDragLeaveTerminal = useCallback((e: React.DragEvent) => {
+    if (!e.dataTransfer?.types.includes("Files")) return;
+    e.preventDefault();
+    dragCounterRef.current = Math.max(0, dragCounterRef.current - 1);
+    if (dragCounterRef.current === 0) setIsDragging(false);
+  }, []);
+  const onDropTerminal = useCallback(
+    (e: React.DragEvent) => {
+      if (!e.dataTransfer?.files || e.dataTransfer.files.length === 0) return;
+      e.preventDefault();
+      dragCounterRef.current = 0;
+      setIsDragging(false);
+      void handleFiles(e.dataTransfer.files);
+    },
+    [handleFiles],
+  );
+
+  const onPickFiles = useCallback(() => {
+    // If we already have attachments, the 📎 button toggles the drawer
+    // instead of opening a fresh picker — saves a click. When the list
+    // is empty, it opens the native file picker.
+    if (attachments.length > 0) {
+      setAttachmentsOpen((v) => !v);
+    } else {
+      fileInputRef.current?.click();
+    }
+  }, [attachments.length]);
+  const onFileInputChange = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      if (e.target.files && e.target.files.length > 0) {
+        void handleFiles(e.target.files);
+        // Reset so picking the same file again re-triggers onChange.
+        e.target.value = "";
+      }
+    },
+    [handleFiles],
+  );
+
+  // Cleanup the gateway client on unmount.
+  useEffect(() => {
+    return () => {
+      attachGwRef.current?.close();
+      attachGwRef.current = null;
+    };
+  }, []);
   // Raw state for the mobile side-sheet + a derived value that force-
   // closes whenever the chat tab isn't active.  The *derived* value is
   // what side-effects (body-scroll lock, keydown listener, portal render)
@@ -880,36 +1076,135 @@ export default function ChatPage({ isActive = true }: { isActive?: boolean }) {
             boxShadow: "0 8px 32px rgba(0, 0, 0, 0.4)",
           }}
         >
+          {/* Drop overlay: a transparent div covering the xterm host that
+              captures drag events and shows a visual hint. We do NOT
+              capture clicks — those still flow into xterm for the
+              terminal input to keep working. */}
+          <div
+            onDragEnter={onDragEnterTerminal}
+            onDragOver={onDragOverTerminal}
+            onDragLeave={onDragLeaveTerminal}
+            onDrop={onDropTerminal}
+            className={cn(
+              "absolute inset-0 z-5 transition-[border,background] duration-150",
+              isDragging
+                ? "pointer-events-auto border-2 border-dashed border-emerald-400/80 bg-emerald-500/10"
+                : "pointer-events-none border-2 border-transparent",
+            )}
+            aria-hidden="true"
+            data-testid="chat-drop-overlay"
+          >
+            {isDragging && (
+              <div className="pointer-events-none flex h-full w-full items-center justify-center">
+                <div
+                  className={cn(
+                    "rounded border border-emerald-400/60 bg-black/70 px-4 py-2",
+                    "font-mono text-xs uppercase tracking-widest text-emerald-300",
+                  )}
+                >
+                  drop files to attach
+                </div>
+              </div>
+            )}
+          </div>
+
           <div
             ref={hostRef}
             className="hermes-chat-xterm-host min-h-0 min-w-0 flex-1"
           />
 
-          <Button
-            ghost
-            onClick={handleCopyLast}
-            title="Copy last assistant response as raw markdown"
-            aria-label="Copy last assistant response"
+          {/* Hidden file input driven by the 📎 button. */}
+          <input
+            ref={fileInputRef}
+            type="file"
+            multiple
+            onChange={onFileInputChange}
+            className="hidden"
+            aria-hidden="true"
+            tabIndex={-1}
+            data-testid="chat-file-input"
+          />
+
+          {/* Bottom-right toolbar: 📎 + copy. */}
+          <div
             className={cn(
-              "absolute z-10",
-              "normal-case tracking-normal font-normal",
-              "rounded border border-current/30",
-              "bg-black/20 backdrop-blur-sm",
-              "opacity-70 hover:opacity-100 hover:border-current/60",
-              "transition-opacity duration-150",
-              "bottom-2 right-2 px-2 py-1 text-xs sm:bottom-3 sm:right-3 sm:px-2.5 sm:py-1.5",
-              "lg:bottom-4 lg:right-4",
+              "absolute z-10 flex items-center gap-1.5",
+              "bottom-2 right-2 sm:bottom-3 sm:right-3 lg:bottom-4 lg:right-4",
             )}
-            style={{ color: TERMINAL_THEME_STATIC.foreground }}
           >
-            <span className="inline-flex items-center gap-1.5">
-              <Copy className="h-3 w-3 shrink-0" />
-              <span className="hidden min-[400px]:inline tracking-wide">
-                {copyState === "copied" ? "copied" : "copy last response"}
+            <Button
+              ghost
+              onClick={onPickFiles}
+              title="Attach files to the next message"
+              aria-label="Attach files"
+              data-testid="chat-attach-button"
+              className={cn(
+                "normal-case tracking-normal font-normal",
+                "rounded border border-current/30",
+                "bg-black/20 backdrop-blur-sm",
+                "opacity-70 hover:opacity-100 hover:border-current/60",
+                "transition-opacity duration-150",
+                "px-2 py-1 text-xs sm:px-2.5 sm:py-1.5",
+              )}
+              style={{ color: TERMINAL_THEME_STATIC.foreground }}
+            >
+              <span className="inline-flex items-center gap-1.5">
+                <Paperclip className="h-3 w-3 shrink-0" />
+                <span className="hidden min-[400px]:inline tracking-wide">
+                  attach
+                </span>
+                {attachments.length > 0 && (
+                  <span
+                    className={cn(
+                      "ml-1 inline-flex h-4 min-w-[1rem] items-center justify-center rounded",
+                      "border border-current/30 px-1 font-mono text-[10px]",
+                    )}
+                  >
+                    {attachments.length}
+                  </span>
+                )}
               </span>
-            </span>
-          </Button>
+            </Button>
+
+            <Button
+              ghost
+              onClick={handleCopyLast}
+              title="Copy last assistant response as raw markdown"
+              aria-label="Copy last assistant response"
+              className={cn(
+                "normal-case tracking-normal font-normal",
+                "rounded border border-current/30",
+                "bg-black/20 backdrop-blur-sm",
+                "opacity-70 hover:opacity-100 hover:border-current/60",
+                "transition-opacity duration-150",
+                "px-2 py-1 text-xs sm:px-2.5 sm:py-1.5",
+              )}
+              style={{ color: TERMINAL_THEME_STATIC.foreground }}
+            >
+              <span className="inline-flex items-center gap-1.5">
+                <Copy className="h-3 w-3 shrink-0" />
+                <span className="hidden min-[400px]:inline tracking-wide">
+                  {copyState === "copied" ? "copied" : "copy last response"}
+                </span>
+              </span>
+            </Button>
+          </div>
         </div>
+
+        {/* Side panel: attachments drawer (when open) + the standard
+            model/tools ChatSidebar (when viewport is wide). The
+            attachments drawer takes precedence on wide screens so the
+            user can see model info AND attachments side-by-side; on
+            narrow viewports the user toggles it via the 📎 button. */}
+        {attachmentsOpen && (
+          <AttachmentsDrawer
+            open={attachmentsOpen}
+            onClose={() => setAttachmentsOpen(false)}
+            attachments={attachments}
+            onRemove={removeAttachment}
+            onClearAll={clearAttachments}
+          />
+        )}
 
         {!narrow && (
           <div
