@@ -60,34 +60,40 @@ jobs:
         if: steps.div.outputs.behind != '0'
         env:
           BEHIND: ${{ steps.div.outputs.behind }}
-          # Use SYNC_TOKEN (a classic PAT with `workflow` scope) for the
-          # push because GITHUB_TOKEN cannot update `.github/workflows/*`
-          # files (GitHub's workflow-scope protection). The rebase may
-          # bring in upstream workflow changes.
-          #
-          # We use a username-style URL (PAT as password) because the
-          # `x-access-token:` form gets treated as the workflow's GitHub
-          # App, which still has the restriction. With a real username the
-          # server treats it as the PAT user and honours the `workflow`
-          # scope on the token.
           SYNC_TOKEN: ${{ secrets.SYNC_TOKEN }}
         run: |
           set -euo pipefail
           echo "Rebasing $BEHIND upstream commit(s) onto HEAD..."
-          # rebase will fail with non-zero if there are conflicts; we DO NOT
-          # resolve them automatically, so a conflict leaves the repo clean
-          # and the workflow fails loudly for manual intervention.
           git rebase nousresearch/main
+
+          # After a rebase, head of our local main may include upstream
+          # changes to files under .github/workflows/. Pushing those from a
+          # GitHub Action (even with a PAT) is blocked by GitHub's workflow-
+          # scope protection. Strategy: keep the workflow file changes in
+          # the rebase locally, but reset them to the pre-rebase tip on the
+          # remote. This is a personal fork, so we don't need upstream's
+          # CI workflows.
+          if git diff --name-only origin/main HEAD | grep -q '^\.github/workflows/'; then
+            echo "⚠️  Upstream brought workflow changes. Restoring origin/main versions on top of the rebase."
+            WORKFLOW_FILES=$(git diff --name-only origin/main HEAD | grep '^\.github/workflows/')
+            for f in $WORKFLOW_FILES; do
+              git checkout origin/main -- "$f"
+            done
+            git add .github/workflows/
+            if ! git diff --cached --quiet; then
+              git commit -m "chore(sync): restore fork's workflow files (upstream changes dropped, see $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/compare/main...nousresearch:main)"
+            fi
+          fi
+
           # Rewrite origin URL with PAT-in-username so the push is attributed
           # to the PAT user (not the GitHub App that owns this workflow).
           PUSH_URL="https://sync-token:${SYNC_TOKEN}@github.com/eddremonts86/hermes-agent.git"
           git remote set-url origin "$PUSH_URL"
+
           # After a rebase, HEAD is no longer a fast-forward of origin/main,
           # so we MUST force-push. --force-with-lease is safe here because:
           #   1. The remote was just fetched at the start of this job.
           #   2. The only writer to this branch is this workflow (SYNC_TOKEN).
-          # If a concurrent write slipped in, --force-with-lease will refuse
-          # and we'll see the failure rather than silently clobbering.
           git push --force-with-lease origin HEAD:main
           echo "✅ Pushed rebase to origin/main."
           echo "ℹ️  docker-publish.yml will rebuild and republish ghcr.io/eddremonts86/hermes-agent."
