@@ -1,21 +1,17 @@
-name: Weekly upstream sync
+name: Manual upstream sync
 
-# Runs every Monday at 06:00 UTC. Brings NousResearch/hermes-agent changes
-# directly into main on this fork.
+# Brings NousResearch/hermes-agent changes directly into main on this fork.
+# This is a personal fork: upstream sync is opt-in and triggered manually
+# from the Actions tab ("Run workflow") whenever eddremonts86 wants to
+# pull new upstream commits. There is no schedule.
 #
 # Why direct push (not a PR):
 #   - This is a personal fork; eddremonts86 is the only owner and
 #     image consumer. We want zero review ceremony.
-#   - If a rebase conflicts, the workflow aborts (does NOT force-push)
-#     and creates a manual todo so the user can resolve locally.
-#
-# Triggers:
-#   - schedule:  Monday 06:00 UTC
-#   - workflow_dispatch:  manual "Run workflow" from the Actions tab
+#   - If a rebase conflicts, the workflow aborts and eddremonts86
+#     resolves it locally.
 
 on:
-  schedule:
-    - cron: '0 6 * * 1'
   workflow_dispatch:
 
 permissions:
