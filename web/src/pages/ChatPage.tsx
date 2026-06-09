@@ -245,6 +245,29 @@ export default function ChatPage({ isActive = true }: { isActive?: boolean }) {
                 : a,
             ),
           );
+
+          // Auto-inject the @file: ref into the chat input so the user
+          // can simply type their question and hit Enter — the TUI's
+          // prompt builder will pick up the @file: token and read the
+          // staged file as context for the next turn.
+          //
+          // This mirrors the desktop's behavior (see
+          // `terminalContextBlocksFromDraft` + addComposerAttachment in
+          // apps/desktop): we paste the ref into the terminal so it
+          // appears on the prompt line, then focus the terminal so the
+          // user's keystrokes continue from there.
+          if (result.ref_text) {
+            const term = termRef.current;
+            if (term) {
+              // Prepend a leading space when something is already on the
+              // prompt line so we don't mash into existing text. The TUI
+              // also handles bracketed-paste correctly when the host has
+              // it enabled, which the chat xterm does.
+              const refToken = result.ref_text.trimEnd();
+              term.paste(`\n${refToken}\n`);
+              term.focus();
+            }
+          }
         } catch (e) {
           const msg = e instanceof Error ? e.message : String(e);
           setAttachments((prev) =>
