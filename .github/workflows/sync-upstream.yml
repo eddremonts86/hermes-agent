@@ -64,9 +64,15 @@ jobs:
           set -euo pipefail
           echo "Rebasing $BEHIND upstream commit(s) onto HEAD..."
           # rebase will fail with non-zero if there are conflicts; we DO NOT
-          # --force or --force-with-lease, so a conflict leaves the repo clean
-          # and the workflow fails loudly.
+          # resolve them automatically, so a conflict leaves the repo clean
+          # and the workflow fails loudly for manual intervention.
           git rebase nousresearch/main
-          git push origin HEAD:main
+          # After a rebase, HEAD is no longer a fast-forward of origin/main,
+          # so we MUST force-push. --force-with-lease is safe here because:
+          #   1. The remote was just fetched at the start of this job.
+          #   2. The only writer to this branch is this workflow (GITHUB_TOKEN).
+          # If a concurrent write slipped in, --force-with-lease will refuse
+          # and we'll see the failure rather than silently clobbering.
+          git push --force-with-lease origin HEAD:main
           echo "✅ Pushed rebase to origin/main."
           echo "ℹ️  docker-publish.yml will rebuild and republish ghcr.io/eddremonts86/hermes-agent."
