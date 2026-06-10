@@ -158,6 +158,16 @@ export default function ChatPage({ isActive = true }: { isActive?: boolean }) {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   /** GatewayClient reused across the session — created lazily on first attach. */
   const attachGwRef = useRef<GatewayClient | null>(null);
+  /**
+   * Real chat session ID (the `Session: a4799d27` hex shown in the TUI
+   * banner), captured from the PTY's stdout. file.attach MUST be called
+   * with this — NOT with `window.__HERMES_SESSION_TOKEN__`, which is the
+   * HTTP auth token, not a session id. The previous code passed the auth
+   * token and the gateway returned "session not found", so the attachment
+   * was never staged, the @file: ref was never generated, and the agent
+   * had no context for the user's "summarize the file" prompt.
+   */
+  const chatSessionIdRef = useRef<string | null>(null);
 
   /**
    * Get or create a GatewayClient for the attachment RPC. The client
@@ -197,13 +207,26 @@ export default function ChatPage({ isActive = true }: { isActive?: boolean }) {
       });
       setAttachments((prev) => [...prev, ...placeholders]);
 
-      // Find a session id for the gateway RPC. We pull it from the WS
-      // URL we already built (the PTY session token) — if the chat isn't
-      // yet connected, we fail with a clear message per-attachment.
-      const sessionToken =
-        typeof window !== "undefined"
-          ? window.__HERMES_SESSION_TOKEN__ || ""
-          : "";
+      // The gateway's file.attach RPC needs the *chat* session id (the
+      // hex shown as "Session: a4799d27" in the TUI banner), NOT the
+      // HTTP auth token from window.__HERMES_SESSION_TOKEN__. The auth
+      // token only authorizes the WebSocket; the session id is what
+      // identifies which conversation the attachment belongs to.
+      //
+      // The chat session id is captured by parsing the TUI's stdout
+      // (see ws.onmessage below). If the user attaches before the
+      // banner has been emitted, fail fast with a clear message.
+      const chatSessionId = chatSessionIdRef.current;
+      if (!chatSessionId) {
+        const msg =
+          "Chat session isn't ready yet — wait a moment for the TUI to start, then try again.";
+        setAttachments((prev) =>
+          prev.map((a) =>
+            a.status === "uploading" ? { ...a, status: "error", error: msg } : a,
+          ),
+        );
+        return;
+      }
 
       for (let i = 0; i < list.length; i++) {
         const file = list[i];
@@ -228,7 +251,7 @@ export default function ChatPage({ isActive = true }: { isActive?: boolean }) {
             ref_text?: string;
             uploaded: boolean;
           }>("file.attach", {
-            session_id: sessionToken,
+            session_id: chatSessionId,
             name: file.name,
             data_url: dataUrl,
           });
@@ -820,6 +843,35 @@ export default function ChatPage({ isActive = true }: { isActive?: boolean }) {
     };
 
     ws.onmessage = (ev) => {
+      // Decode the chunk once. xterm.js accepts both string and binary
+      // frames; for the session-id scan we just need a string view.
+      const chunk =
+        typeof ev.data === "string"
+          ? ev.data
+          : new TextDecoder("utf-8", { fatal: false }).decode(
+              new Uint8Array(ev.data as ArrayBuffer),
+            );
+
+      // Capture the chat session id from the TUI banner so file.attach
+      // can target the right session. The banner prints the line
+      //   "Session: a4799d27"
+      // (sometimes wrapped in SGR color codes). We strip ANSI before
+      // matching, and only set the ref once — once captured, the session
+      // id is stable for the lifetime of the chat tab.
+      if (!chatSessionIdRef.current) {
+        // eslint-disable-next-line no-control-regex -- stripping CSI/OSC sequences emitted by the TUI
+        const stripped = chunk.replace(
+          /\x1b\[[0-9;?]*[ -/]*[@-~]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)/g,
+          "",
+        );
+        const m = stripped.match(/\bSession:\s*([a-f0-9]{6,})\b/i);
+        if (m) {
+          chatSessionIdRef.current = m[1];
+          // Surfaced for debugging the "attachment session not found" bug.
+          console.info("[chat] captured session id:", m[1]);
+        }
+      }
+
       if (typeof ev.data === "string") {
         term.write(ev.data);
       } else {
