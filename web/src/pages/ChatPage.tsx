@@ -263,8 +263,18 @@ export default function ChatPage({ isActive = true }: { isActive?: boolean }) {
               // prompt line so we don't mash into existing text. The TUI
               // also handles bracketed-paste correctly when the host has
               // it enabled, which the chat xterm does.
+              //
+              // IMPORTANT: don't wrap the ref in \n. The TUI's input
+              // buffer treats a bare CR/LF as a submit, so wrapping
+              // would fire a submission containing just the ref
+              // *before* the user types their prompt — the agent
+              // would never see both together. Instead, paste the
+              // ref with a single leading space and a trailing space,
+              // so it lives in the same line as the user's prompt:
+              // the user keeps typing after the ref and a single
+              // Enter submits the whole buffer at once.
               const refToken = result.ref_text.trimEnd();
-              term.paste(`\n${refToken}\n`);
+              term.paste(` ${refToken} `);
               term.focus();
             }
           }
