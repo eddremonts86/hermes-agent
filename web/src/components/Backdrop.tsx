@@ -102,6 +102,11 @@ export function Backdrop() {
           producing the LENS_5I "light mode" look without altering any
           downstream component code.
 
+          The Apple `default` theme opts out of the inversion entirely
+          (it sets `--component-backdrop-fg-inversion-opacity: 0` in
+          `componentStyles.backdrop`) so the light canvas paints as-is
+          without a `difference` flip.
+
           z-200 (not 100) so it sits above every portaled UI overlay —
           sidebar tooltips, dropUp dropdowns, and modal dialogs all use
           z-[100], which is what the DS Lens picks too; portals append
@@ -112,11 +117,16 @@ export function Backdrop() {
       <div
         aria-hidden
         className="pointer-events-none fixed inset-0"
-        style={{
-          backgroundColor: "var(--foreground)",
-          mixBlendMode: "difference",
-          zIndex: 200,
-        }}
+        style={
+          {
+            backgroundColor:
+              "var(--component-backdrop-fg-inversion-color, var(--foreground))",
+            mixBlendMode:
+              "var(--component-backdrop-fg-inversion-blend-mode, difference)",
+            opacity: "var(--component-backdrop-fg-inversion-opacity, 1)",
+            zIndex: 200,
+          } as unknown as React.CSSProperties
+        }
       />
 
       {gpuTier > 0 && (

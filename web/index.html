@@ -8,6 +8,13 @@
       content="width=device-width, initial-scale=1.0, viewport-fit=cover"
     />
     <title>Hermes Agent - Dashboard</title>
+
+    <!-- Preconnect to Google Fonts so the Apple default theme's Inter
+         webfont fetches start during the browser's HTML parse, not after
+         ThemeProvider's first render. Both hostnames are required: the
+         CSS lives at googleapis.com and the font files at gstatic.com. -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   </head>
   <body>
     <div id="root"></div>

@@ -92,15 +92,17 @@ function iconForMime(mime: string) {
   return FileIcon;
 }
 
-/** Color hint by status (still retro/terminal — uses foreground dim accents). */
+/** Color hint by status — Apple system accents: amber for in-flight,
+ *  green for success, red for failure. Used for both the status icon
+ *  and the inline status label. */
 function statusColor(status: AttachmentStatus): string {
   switch (status) {
     case "uploading":
-      return "text-amber-300/80";
+      return "text-[#ff9500]";
     case "uploaded":
-      return "text-emerald-300/80";
+      return "text-[#34c759]";
     case "error":
-      return "text-red-300/80";
+      return "text-[#ff3b30]";
   }
 }
 
@@ -119,8 +121,8 @@ export function AttachmentsDrawer({
       aria-label="Session attachments"
       className={cn(
         "flex min-h-0 w-full flex-col overflow-hidden rounded-lg",
-        "border border-emerald-500/30",
-        "bg-black/70 backdrop-blur-sm",
+        "border border-[#e0e0e0]",
+        "bg-white",
         "lg:w-80",
       )}
     >
@@ -128,15 +130,15 @@ export function AttachmentsDrawer({
       <header
         className={cn(
           "flex shrink-0 items-center justify-between gap-2",
-          "border-b border-emerald-500/20",
+          "border-b border-[#f0f0f0]",
           "px-3 py-2",
         )}
       >
         <div className="flex min-w-0 items-center gap-2">
-          <span className="text-[10px] uppercase tracking-widest text-emerald-300/80">
+          <span className="text-[10px] uppercase tracking-widest text-[#7a7a7a]">
             attachments
           </span>
-          <span className="rounded border border-emerald-500/30 px-1.5 py-0.5 font-mono text-[10px] text-emerald-300/60">
+          <span className="rounded border border-[#e0e0e0] px-1.5 py-0.5 font-mono text-[10px] text-[#7a7a7a]">
             {attachments.length}
           </span>
         </div>
@@ -147,7 +149,7 @@ export function AttachmentsDrawer({
               onClick={onClearAll}
               title="Remove all attachments"
               aria-label="Clear all attachments"
-              className="h-6 w-6 rounded p-0 text-emerald-300/60 opacity-70 hover:opacity-100"
+              className="h-6 w-6 rounded p-0 text-[#7a7a7a] opacity-70 hover:opacity-100"
             >
               <Trash2 className="h-3 w-3" />
             </Button>
@@ -157,7 +159,7 @@ export function AttachmentsDrawer({
             onClick={onClose}
             title="Close attachments drawer"
             aria-label="Close attachments drawer"
-            className="h-6 w-6 rounded p-0 text-emerald-300/60 opacity-70 hover:opacity-100"
+            className="h-6 w-6 rounded p-0 text-[#7a7a7a] opacity-70 hover:opacity-100"
           >
             <PanelRightClose className="h-3 w-3" />
           </Button>
@@ -168,10 +170,10 @@ export function AttachmentsDrawer({
       <div className="min-h-0 flex-1 overflow-y-auto p-2">
         {attachments.length === 0 ? (
           <div className="flex h-full flex-col items-center justify-center gap-2 px-4 py-6 text-center">
-            <div className="font-mono text-[10px] uppercase tracking-widest text-emerald-300/30">
+            <div className="font-mono text-[10px] uppercase tracking-widest text-[#7a7a7a]/60">
               no attachments yet
             </div>
-            <div className="font-mono text-[10px] leading-relaxed text-emerald-300/40">
+            <div className="font-mono text-[10px] leading-relaxed text-[#7a7a7a]/80">
               drag files into the terminal
               <br />
               or use the clip button
@@ -191,14 +193,14 @@ export function AttachmentsDrawer({
                 <li
                   key={att.id}
                   className={cn(
-                    "group flex items-start gap-2 rounded border border-emerald-500/15",
-                    "bg-emerald-500/5 px-2 py-1.5",
-                    "hover:border-emerald-500/30 hover:bg-emerald-500/10",
+                    "group flex items-start gap-2 rounded border border-[#f0f0f0]",
+                    "bg-white px-2 py-1.5",
+                    "hover:border-[#e0e0e0] hover:bg-[#fafafc]",
                     "transition-colors",
                   )}
                 >
                   {/* Icon (placeholder thumbnail) */}
-                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded border border-emerald-500/20 bg-black/40">
+                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded border border-[#f0f0f0] bg-[#f5f5f7]">
                     <Icon
                       className={cn("h-4 w-4", statusColor(att.status))}
                     />
@@ -207,14 +209,14 @@ export function AttachmentsDrawer({
                   {/* Meta */}
                   <div className="min-w-0 flex-1">
                     <div
-                      className="truncate font-mono text-[11px] text-emerald-100"
+                      className="truncate font-mono text-[11px] text-[#1d1d1f]"
                       title={att.name}
                     >
                       {att.name}
                     </div>
-                    <div className="mt-0.5 flex items-center gap-1.5 font-mono text-[10px] text-emerald-300/50">
+                    <div className="mt-0.5 flex items-center gap-1.5 font-mono text-[10px] text-[#7a7a7a]">
                       <span>{formatBytes(att.size)}</span>
-                      <span className="text-emerald-300/20">•</span>
+                      <span className="text-[#7a7a7a]/40">•</span>
                       <span
                         className={cn(
                           "inline-flex items-center gap-1",
@@ -242,7 +244,7 @@ export function AttachmentsDrawer({
                     onClick={() => onRemove(att.id)}
                     title="Remove attachment"
                     aria-label={`Remove ${att.name}`}
-                    className="h-6 w-6 shrink-0 rounded p-0 text-emerald-300/40 opacity-0 transition-opacity hover:text-red-300/80 group-hover:opacity-100"
+                    className="h-6 w-6 shrink-0 rounded p-0 text-[#7a7a7a]/60 opacity-0 transition-opacity hover:text-[#ff3b30] group-hover:opacity-100"
                   >
                     <X className="h-3 w-3" />
                   </Button>

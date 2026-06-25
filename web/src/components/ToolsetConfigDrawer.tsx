@@ -281,7 +281,7 @@ export function ToolsetConfigDrawer({ toolset, onClose, onChanged }: Props) {
                   key={provider.name}
                   className={cn(
                     "border border-border p-3",
-                    isActive && "border-emerald-500/60 bg-emerald-500/5",
+                    isActive && "border-[#0066cc]/60 bg-[#0066cc]/5",
                   )}
                 >
                   <div className="flex items-center justify-between gap-2">

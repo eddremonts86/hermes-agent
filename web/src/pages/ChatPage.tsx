@@ -1158,7 +1158,11 @@ export default function ChatPage({ isActive = true }: { isActive?: boolean }) {
           )}
           style={{
             backgroundColor: terminalBg,
-            boxShadow: "0 8px 32px rgba(0, 0, 0, 0.4)",
+            // Apple treatment: hairline border around the xterm pane
+            // (the previous `boxShadow` violated the "no shadow on
+            // chrome" rule). The dark `backgroundColor: terminalBg`
+            // stays because the xterm body needs a dark host.
+            border: "1px solid #e0e0e0",
           }}
         >
           {/* Drop overlay: a transparent div covering the xterm host that
@@ -1173,7 +1177,7 @@ export default function ChatPage({ isActive = true }: { isActive?: boolean }) {
             className={cn(
               "absolute inset-0 z-5 transition-[border,background] duration-150",
               isDragging
-                ? "pointer-events-auto border-2 border-dashed border-emerald-400/80 bg-emerald-500/10"
+                ? "pointer-events-auto border-2 border-dashed border-[#0066cc]/60 bg-[#0066cc]/5"
                 : "pointer-events-none border-2 border-transparent",
             )}
             aria-hidden="true"
@@ -1183,8 +1187,8 @@ export default function ChatPage({ isActive = true }: { isActive?: boolean }) {
               <div className="pointer-events-none flex h-full w-full items-center justify-center">
                 <div
                   className={cn(
-                    "rounded border border-emerald-400/60 bg-black/70 px-4 py-2",
-                    "font-mono text-xs uppercase tracking-widest text-emerald-300",
+                    "rounded border border-[#0066cc]/40 bg-white/95 px-4 py-2",
+                    "font-mono text-xs uppercase tracking-widest text-[#0066cc]",
                   )}
                 >
                   drop files to attach
@@ -1210,7 +1214,11 @@ export default function ChatPage({ isActive = true }: { isActive?: boolean }) {
             data-testid="chat-file-input"
           />
 
-          {/* Bottom-right toolbar: 📎 + copy. */}
+          {/* Bottom-right toolbar: 📎 + copy.
+              The `bg-black/20 backdrop-blur-sm` dark-glass treatment is
+              intentional — the toolbar floats over the dark xterm pane,
+              not over the Apple canvas. Do not switch to a light
+              treatment here. */}
           <div
             className={cn(
               "absolute z-10 flex items-center gap-1.5",

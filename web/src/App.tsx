@@ -469,7 +469,7 @@ export default function App() {
   return (
     <div
       data-layout-variant={layoutVariant}
-      className="flex h-dvh max-h-dvh min-h-0 flex-col overflow-hidden bg-black text-text-primary antialiased"
+      className="flex h-dvh max-h-dvh min-h-0 flex-col overflow-hidden bg-white text-text-primary antialiased"
     >
       <SelectionSwitcher />
       <Backdrop />
@@ -500,6 +500,10 @@ export default function App() {
           <Menu />
         </Button>
 
+        {/* `mix-blend-mode: plus-lighter` was set so the wordmark glowed
+            on the dark Hermes-Teal canvas. The Apple `default` theme
+            neutralizes it via `customCSS` in `presets.ts`; other themes
+            (e.g. Hermes Teal) keep the glow. Do not remove. */}
         <Typography
           className="font-bold text-[0.95rem] leading-[0.95] tracking-[0.05em] text-midground"
           style={{ mixBlendMode: "plus-lighter" }}
@@ -515,7 +519,10 @@ export default function App() {
           onClick={closeMobile}
           className={cn(
             "lg:hidden fixed inset-0 z-40 p-0 block",
-            "bg-black/60 backdrop-blur-sm",
+            // Apple-friendly scrim: soft 10% ink on the white canvas,
+            // stronger blur. The dark `bg-black/60` only read correctly
+            // on the dark Hermes-Teal canvas.
+            "bg-foreground/10 backdrop-blur-md",
           )}
         />
       )}
@@ -558,6 +565,9 @@ export default function App() {
               >
                 <PluginSlot name="header-left" />
 
+                {/* Wordmark; blend-mode is killed by the Apple theme's
+                    `customCSS` — see `presets.ts`. Other themes keep the
+                    plus-lighter glow. Do not remove. */}
                 <Typography
                   className="font-bold text-[1.125rem] leading-[0.95] tracking-[0.0525rem] text-midground uppercase"
                   style={{ mixBlendMode: "plus-lighter" }}
@@ -834,6 +844,8 @@ function SidebarNavLink({
             />
 
             {isActive && (
+              // Active-nav indicator: blend-mode killed by Apple theme
+              // via `customCSS` in `presets.ts`.
               <span
                 aria-hidden
                 className="absolute left-0 top-0 bottom-0 w-px bg-midground"
@@ -995,6 +1007,8 @@ function SystemActionButton({
         />
 
         {busy && (
+          // Busy indicator: blend-mode killed by Apple theme via
+          // `customCSS` in `presets.ts`.
           <span
             aria-hidden
             className="absolute left-0 top-0 bottom-0 w-px bg-midground"

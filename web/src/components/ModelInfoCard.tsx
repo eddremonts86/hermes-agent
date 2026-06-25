@@ -60,7 +60,7 @@ export function ModelInfoCard({
             {formatTokenCount(info.effective_context_length)}
           </span>
           {info.config_context_length > 0 ? (
-            <span className="text-amber-500 text-xs">
+            <span className="text-[#ff9500] text-xs">
               (override — auto: {formatTokenCount(info.auto_context_length)})
             </span>
           ) : (
@@ -91,12 +91,12 @@ export function ModelInfoCard({
             </span>
           )}
           {caps.supports_vision && (
-            <span className="inline-flex items-center gap-1 bg-blue-500/10 px-2 py-0.5 text-xs font-medium text-blue-600 dark:text-blue-400">
+            <span className="inline-flex items-center gap-1 bg-[#0066cc]/10 px-2 py-0.5 text-xs font-medium text-[#0066cc]">
               <Eye className="h-2.5 w-2.5" /> Vision
             </span>
           )}
           {caps.supports_reasoning && (
-            <span className="inline-flex items-center gap-1 bg-purple-500/10 px-2 py-0.5 text-xs font-medium text-purple-600 dark:text-purple-400">
+            <span className="inline-flex items-center gap-1 bg-[#1d1d1f]/5 px-2 py-0.5 text-xs font-medium text-[#1d1d1f]">
               <Brain className="h-2.5 w-2.5" /> Reasoning
             </span>
           )}

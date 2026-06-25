@@ -29,6 +29,11 @@ export function SidebarFooter({ status }: SidebarFooterProps) {
           "transition-opacity hover:opacity-90",
           "focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-midground/40",
         )}
+        // Blend is a no-op under the Apple default theme — the theme's
+        // `customCSS` in `themes/presets.ts` neutralises
+        // `mix-blend-mode: plus-lighter` globally so this ink-on-white
+        // link paints as plain text. Do not remove the rule; dark themes
+        // (e.g. Hermes Teal) still rely on the glow it produces.
         style={{ mixBlendMode: "plus-lighter" }}
       >
         {t.app.footer.org}

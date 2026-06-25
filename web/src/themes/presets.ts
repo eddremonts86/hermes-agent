@@ -38,10 +38,86 @@ const DEFAULT_LAYOUT: ThemeLayout = {
 // Themes
 // ---------------------------------------------------------------------------
 
+/**
+ * Apple — the new default. Light "museum gallery" canvas, near-black ink,
+ * single Action Blue accent, SF Pro typography, pill buttons, hairline
+ * borders. The `customCSS` block below neutralizes the dark-flavored
+ * Backdrop layers (warm-glow, noise, FG-inversion) and the
+ * `mix-blend-mode: plus-lighter` chrome that assumes a dark canvas. The
+ * embedded xterm terminal is left alone (`terminalBackground: #000000`) so
+ * the TUI's own skin continues to read correctly.
+ */
 export const defaultTheme: DashboardTheme = {
   name: "default",
-  label: "Hermes Teal",
-  description: "Classic dark teal — the canonical Hermes look",
+  label: "Apple",
+  description: "Clean light canvas — the default look",
+  palette: {
+    background: { hex: "#ffffff", alpha: 1 },
+    midground: { hex: "#1d1d1f", alpha: 1 },
+    foreground: { hex: "#1d1d1f", alpha: 1 },
+    warmGlow: "rgba(0, 0, 0, 0)",
+    noiseOpacity: 0,
+  },
+  typography: {
+    ...DEFAULT_TYPOGRAPHY,
+    // Inter loaded from Google Fonts. Designed by Rasmus Andersson for
+    // screen UI; the de-facto choice for modern dashboards (Linear,
+    // Vercel, Figma, GitHub) and the best fallback when the OS doesn't
+    // ship SF Pro (i.e. anything that isn't macOS). The system stack at
+    // the end keeps the page readable if the Google Fonts request is
+    // blocked or slow.
+    fontSans: `"Inter", ${SYSTEM_SANS}`,
+    fontUrl: "https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap",
+    baseSize: "17px",
+    lineHeight: "1.5",
+    letterSpacing: "-0.011em",
+  },
+  layout: {
+    ...DEFAULT_LAYOUT,
+    radius: "11px",
+  },
+  terminalBackground: "#000000",
+  componentStyles: {
+    backdrop: {
+      fillerOpacity: "0",
+      fillerBlendMode: "normal",
+      bgBlendMode: "normal",
+      fgInversionOpacity: "0",
+      fgInversionBlendMode: "normal",
+    },
+  },
+  colorOverrides: {
+    primary: "#0066cc",
+    primaryForeground: "#ffffff",
+    border: "rgba(0, 0, 0, 0.08)",
+    input: "rgba(0, 0, 0, 0.08)",
+    ring: "#0066cc",
+    destructive: "#ff3b30",
+    success: "#34c759",
+    warning: "#ff9500",
+  },
+  seriesColors: {
+    inputTokenAccent: "#1d1d1f",
+    outputTokenAccent: "#0066cc",
+  },
+  swatchColors: ["#ffffff", "#1d1d1f", "#0066cc"],
+  customCSS: `
+    .blend-lighter,
+    [style*="mix-blend-mode: plus-lighter"] { mix-blend-mode: normal !important; }
+    .grain::after { opacity: 0; }
+  `,
+};
+
+/**
+ * Hermes Teal (Classic) — the previous default, preserved as a selectable
+ * alternative. The "default" key was reassigned to the Apple theme above;
+ * to keep the dark canvas reachable for users who preferred it, the old
+ * palette lives here under the "hermes-teal" key.
+ */
+export const hermesTealTheme: DashboardTheme = {
+  name: "hermes-teal",
+  label: "Hermes Teal (Classic)",
+  description: "Dark teal canvas — preserved as a selectable alternative",
   palette: {
     background: { hex: "#041c1c", alpha: 1 },
     midground: { hex: "#ffe6cb", alpha: 1 },
@@ -279,22 +355,24 @@ export const nousBlueTheme: DashboardTheme = {
 };
 
 /**
- * Same look as ``defaultTheme`` but with a larger root font size, looser
- * line-height, and ``spacious`` density so every rem-based size in the
- * dashboard scales up. For users who find the default 15px UI too dense.
+ * Apple (Large) — same Apple canvas as `defaultTheme` but with a larger
+ * root font size, looser line-height, and `spacious` density so every
+ * rem-based size in the dashboard scales up. For users who find the 17px
+ * base too dense.
  */
 export const defaultLargeTheme: DashboardTheme = {
   name: "default-large",
-  label: "Hermes Teal (Large)",
-  description: "Hermes Teal with bigger fonts and roomier spacing",
+  label: "Apple (Large)",
+  description: "Apple with bigger fonts and roomier spacing",
   palette: defaultTheme.palette,
   typography: {
-    ...DEFAULT_TYPOGRAPHY,
-    baseSize: "18px",
-    lineHeight: "1.65",
+    ...defaultTheme.typography,
+    baseSize: "19px",
+    lineHeight: "1.5",
   },
   layout: {
     ...DEFAULT_LAYOUT,
+    radius: "11px",
     density: "spacious",
   },
 };
@@ -302,6 +380,7 @@ export const defaultLargeTheme: DashboardTheme = {
 export const BUILTIN_THEMES: Record<string, DashboardTheme> = {
   default: defaultTheme,
   "default-large": defaultLargeTheme,
+  "hermes-teal": hermesTealTheme,
   "nous-blue": nousBlueTheme,
   midnight: midnightTheme,
   ember: emberTheme,
